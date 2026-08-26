@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>WebCraft - Clon de Minecraft en el navegador</title>
+  <link rel="stylesheet" href="css/style.css" />
+
+  <!-- Import map: le decimos al navegador de dónde bajar la librería Three.js (sin instalar nada) -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+    }
+  }
+  </script>
+</head>
+<body>
+
+  <!-- Pantalla de carga / bienvenida -->
+  <div id="start-screen">
+    <h1>WebCraft</h1>
+    <p>Un clon de Minecraft 100% en el navegador</p>
+    <button id="start-btn">Click para jugar</button>
+    <div class="controls-help">
+      <p><b>WASD</b> moverse &nbsp;|&nbsp; <b>Mouse</b> mirar &nbsp;|&nbsp; <b>Espacio</b> saltar</p>
+      <p><b>Click Izq.</b> romper bloque &nbsp;|&nbsp; <b>Click Der.</b> colocar bloque</p>
+      <p><b>1-8</b> o rueda del mouse: elegir bloque &nbsp;|&nbsp; <b>ESC</b> liberar el mouse</p>
+    </div>
+  </div>
+
+  <!-- HUD del juego (se muestra una vez empieza a jugar) -->
+  <div id="hud" class="hidden">
+    <div id="crosshair">+</div>
+    <div id="hotbar"></div>
+    <div id="debug-info"></div>
+  </div>
+
+  <!-- Aquí se monta el <canvas> de Three.js -->
+  <div id="game-container"></div>
+
+  <!-- Punto de entrada de nuestro juego (ES module) -->
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
