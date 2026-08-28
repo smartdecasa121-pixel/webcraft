@@ -1,3 +1,4 @@
+
 /* ===================== RESET BÁSICO ===================== */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -47,18 +48,42 @@ html, body {
 
 #start-screen p { margin-top: 8px; font-size: 16px; }
 
-#start-btn {
+/* Botones para elegir el modo de juego (Creativo / Supervivencia) */
+.mode-buttons {
   margin-top: 30px;
-  padding: 16px 32px;
-  font-size: 20px;
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.mode-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 26px;
+  font-size: 18px;
   font-family: inherit;
   color: #fff;
-  background: #6fbf3b;
   border: 3px solid #2c5a12;
   cursor: pointer;
   text-shadow: 1px 1px 0 #000;
+  min-width: 200px;
 }
-#start-btn:hover { background: #7fd646; }
+
+.mode-btn span {
+  font-size: 12px;
+  font-weight: normal;
+  text-shadow: 1px 1px 0 #000;
+  opacity: 0.9;
+}
+
+.mode-creative { background: #6fbf3b; }
+.mode-creative:hover { background: #7fd646; }
+
+.mode-survival { background: #b23b3b; border-color: #5a1212; }
+.mode-survival:hover { background: #cc4747; }
 
 .controls-help {
   margin-top: 40px;
@@ -109,6 +134,7 @@ html, body {
   background: rgba(0,0,0,0.35);
   padding: 4px;
   border-radius: 4px;
+  pointer-events: auto; /* FIX: sin esto los clicks en la hotbar se perdían */
 }
 
 .hotbar-slot {
@@ -119,6 +145,7 @@ html, body {
   align-items: center;
   justify-content: center;
   position: relative;
+  cursor: pointer;
 }
 
 .hotbar-slot.selected {
@@ -138,4 +165,227 @@ html, body {
   font-size: 10px;
   color: #fff;
   text-shadow: 1px 1px 0 #000;
+}
+
+.hotbar-slot .count-label {
+  position: absolute;
+  bottom: 1px; right: 3px;
+  font-size: 11px;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 1px 1px 0 #000;
+}
+
+/* ===================== BARRA DE VIDA (supervivencia) ===================== */
+#health-bar {
+  position: absolute;
+  bottom: 74px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 2px;
+}
+#health-bar .heart {
+  font-size: 20px;
+  text-shadow: 1px 1px 0 #000, -1px -1px 0 #000;
+}
+#health-bar .heart.empty { opacity: 0.35; }
+
+#death-message {
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #ff5555;
+  font-size: 28px;
+  text-shadow: 2px 2px 0 #000;
+  background: rgba(0,0,0,0.5);
+  padding: 16px 28px;
+  border-radius: 6px;
+}
+
+#save-indicator {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  color: #fff;
+  font-size: 12px;
+  background: rgba(0,0,0,0.4);
+  padding: 4px 10px;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.4s;
+}
+#save-indicator.show { opacity: 1; }
+
+/* ===================== PANTALLA DE LOGIN / REGISTRO ===================== */
+#auth-screen {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: linear-gradient(#7ec0ee, #bfe8ff);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  color: #fff;
+  text-shadow: 2px 2px 0 #000;
+  padding: 20px;
+}
+#auth-screen h1 {
+  font-size: 48px;
+  letter-spacing: 4px;
+  color: #6fbf3b;
+  -webkit-text-stroke: 2px #2c5a12;
+}
+#auth-screen p { margin-top: 8px; font-size: 14px; text-align: center; max-width: 320px; }
+
+#auth-tabs { display: flex; margin-top: 26px; gap: 4px; }
+.auth-tab {
+  padding: 10px 18px;
+  font-family: inherit;
+  font-size: 14px;
+  color: #fff;
+  background: rgba(0,0,0,0.35);
+  border: 2px solid #2c5a12;
+  cursor: pointer;
+}
+.auth-tab.active { background: #6fbf3b; }
+
+#auth-form {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 280px;
+}
+#auth-form input {
+  padding: 12px;
+  font-family: inherit;
+  font-size: 15px;
+  border: 2px solid #2c5a12;
+  background: rgba(255,255,255,0.92);
+  color: #222;
+  text-shadow: none;
+}
+#auth-form button {
+  padding: 12px;
+  font-family: inherit;
+  font-size: 16px;
+  color: #fff;
+  background: #6fbf3b;
+  border: 3px solid #2c5a12;
+  cursor: pointer;
+  text-shadow: 1px 1px 0 #000;
+}
+#auth-form button:hover { background: #7fd646; }
+#auth-form button:disabled { opacity: 0.6; cursor: default; }
+
+#auth-error {
+  margin-top: 12px;
+  color: #ffb3b3;
+  font-size: 13px;
+  max-width: 280px;
+  text-align: center;
+}
+#auth-status { margin-top: 12px; font-size: 13px; }
+
+#play-as-guest {
+  margin-top: 22px;
+  background: none;
+  border: none;
+  color: #fff;
+  text-decoration: underline;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  text-shadow: 1px 1px 0 #000;
+}
+
+#logout-btn {
+  margin-top: 18px;
+  background: none;
+  border: 1px solid rgba(255,255,255,0.6);
+  color: #fff;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+#continue-hint {
+  margin-top: 16px;
+  background: rgba(0,0,0,0.35);
+  padding: 8px 14px;
+  border-radius: 4px;
+  font-size: 13px;
+  max-width: 380px;
+  text-align: center;
+}
+
+/* ===================== CONTROLES TÁCTILES (celular / tablet) ===================== */
+#touch-controls {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: 20;
+  pointer-events: none; /* el fondo deja pasar los toques a la cámara (mirar) salvo en las zonas activas */
+}
+
+#joystick-zone {
+  position: absolute;
+  left: 24px; bottom: 24px;
+  width: 120px; height: 120px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.15);
+  border: 2px solid rgba(255,255,255,0.4);
+  pointer-events: auto;
+  touch-action: none;
+}
+#joystick-knob {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 50px; height: 50px;
+  margin: -25px 0 0 -25px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.55);
+  transition: transform 0.03s linear;
+}
+
+#look-zone {
+  position: absolute;
+  right: 0; top: 0;
+  width: 55%; height: 100%;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+#touch-action-buttons {
+  position: absolute;
+  right: 24px; bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  pointer-events: auto;
+}
+#touch-action-buttons button {
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.4);
+  border: 2px solid rgba(255,255,255,0.5);
+  color: #fff;
+  font-size: 22px;
+  touch-action: none;
+}
+#touch-jump {
+  position: absolute;
+  left: 160px; bottom: 24px;
+}
+
+/* En pantallas táctiles chicas, agrandamos un poco los botones del hotbar para que se puedan tocar bien */
+@media (pointer: coarse) {
+  .hotbar-slot { width: 42px; height: 42px; }
+  #debug-info { display: none; } /* no ocupa lugar valioso en pantallas chicas */
 }
