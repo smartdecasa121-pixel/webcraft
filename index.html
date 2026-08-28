@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>WebCraft - Clon de Minecraft en el navegador</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="css/style.css" />
 
   <!-- Import map: le decimos al navegador de dónde bajar la librería Three.js (sin instalar nada) -->
   <script type="importmap">
@@ -17,29 +17,71 @@
 </head>
 <body>
 
-  <!-- Pantalla de carga / bienvenida -->
-  <div id="start-screen">
+  <!-- Pantalla de login / registro (primero que ve el usuario) -->
+  <div id="auth-screen">
     <h1>WebCraft</h1>
-    <p>Un clon de Minecraft 100% en el navegador</p>
-    <button id="start-btn">Click para jugar</button>
+    <p>Creá tu usuario o iniciá sesión para guardar tu progreso</p>
+
+    <div id="auth-tabs">
+      <button id="tab-login" class="auth-tab active">Iniciar sesión</button>
+      <button id="tab-register" class="auth-tab">Crear usuario</button>
+    </div>
+
+    <form id="auth-form" autocomplete="off">
+      <input type="text" id="auth-username" placeholder="Usuario" autocomplete="username" required minlength="3" maxlength="20" />
+      <input type="password" id="auth-password" placeholder="Contraseña" autocomplete="current-password" required minlength="4" maxlength="64" />
+      <button type="submit" id="auth-submit">Iniciar sesión</button>
+    </form>
+
+    <p id="auth-error" class="hidden"></p>
+    <p id="auth-status" class="hidden">Conectando...</p>
+
+    <button id="play-as-guest">Jugar como invitado (sin guardar progreso)</button>
+  </div>
+
+  <!-- Pantalla de carga / bienvenida -->
+  <div id="start-screen" class="hidden">
+    <h1>WebCraft</h1>
+    <p id="welcome-text">Un clon de Minecraft 100% en el navegador</p>
+
+    <!-- Selector de modo de juego -->
+    <div class="mode-buttons">
+      <button id="creative-btn" class="mode-btn mode-creative">
+        🎨 Modo Creativo
+        <span>Bloques infinitos, sin daño</span>
+      </button>
+      <button id="survival-btn" class="mode-btn mode-survival">
+        ⚔️ Modo Supervivencia
+        <span>Romper para conseguir bloques, hay vida</span>
+      </button>
+    </div>
+
+    <p id="continue-hint" class="hidden">Tenés una partida guardada: se va a continuar desde donde la dejaste.</p>
+
     <div class="controls-help">
       <p><b>WASD</b> moverse &nbsp;|&nbsp; <b>Mouse</b> mirar &nbsp;|&nbsp; <b>Espacio</b> saltar</p>
       <p><b>Click Izq.</b> romper bloque &nbsp;|&nbsp; <b>Click Der.</b> colocar bloque</p>
       <p><b>1-8</b> o rueda del mouse: elegir bloque &nbsp;|&nbsp; <b>ESC</b> liberar el mouse</p>
+      <p><b>En celular/tablet:</b> joystick a la izquierda, arrastrar a la derecha para mirar</p>
     </div>
+
+    <button id="logout-btn">Cerrar sesión</button>
   </div>
 
   <!-- HUD del juego (se muestra una vez empieza a jugar) -->
   <div id="hud" class="hidden">
     <div id="crosshair">+</div>
+    <div id="health-bar" class="hidden"></div>
     <div id="hotbar"></div>
     <div id="debug-info"></div>
+    <div id="death-message" class="hidden">💀 Moriste... reapareciendo</div>
+    <div id="save-indicator" class="hidden">💾 Guardado</div>
   </div>
 
   <!-- Aquí se monta el <canvas> de Three.js -->
   <div id="game-container"></div>
 
   <!-- Punto de entrada de nuestro juego (ES module) -->
-  <script type="module" src="main.js"></script>
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>
