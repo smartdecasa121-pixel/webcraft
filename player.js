@@ -1,10 +1,11 @@
 // ============================================================
 // player.js - Todo lo relacionado al jugador:
-//  - Cámara en primera persona controlada con Pointer Lock
+//  - Cámara en primera persona (Pointer Lock en PC, touch en
+//    celular/tablet vía look() expuesto)
 //  - Movimiento WASD + salto + gravedad
 //  - Colisión simple contra los bloques del mundo (AABB)
-//  - Raycasting tipo "voxel DDA" para saber a qué bloque
-//    apunta la mira, usado para romper/colocar bloques
+//  - Raycasting tipo "voxel DDA" para romper/colocar bloques
+//  - Vida y daño por caída (solo en modo Supervivencia)
 // ============================================================
 import * as THREE from 'three';
 import { isSolid } from './blocks.js';
@@ -15,28 +16,42 @@ const WALK_SPEED = 5.4;
 const PLAYER_HEIGHT = 1.7;
 const PLAYER_RADIUS = 0.3;
 const EYE_HEIGHT = 1.62;
+const SAFE_FALL_BLOCKS = 3; // hasta esta altura de caída no duele, como en Minecraft
+const MAX_HEALTH = 20;      // 20 = 10 corazones (cada corazón = 2 de vida)
 
 export class Player {
-  constructor(camera, domElement, world) {
+  constructor(camera, domElement, world, mode = 'creative') {
     this.camera = camera;
     this.domElement = domElement;
     this.world = world;
+    this.mode = mode; // 'creative' | 'survival'
 
     this.position = new THREE.Vector3(0, 40, 0);
     this.velocity = new THREE.Vector3(0, 0, 0);
     this.onGround = false;
+    this._wasOnGround = true;
+    this._peakY = null; // altura más alta alcanzada mientras está en el aire (para daño por caída)
 
-    this.yaw = 0;   // rotación horizontal (izquierda/derecha)
-    this.pitch = 0; // rotación vertical (arriba/abajo)
+    this.yaw = 0;
+    this.pitch = 0;
+
+    this.health = MAX_HEALTH;
+    this.maxHealth = MAX_HEALTH;
+    this.isDead = false;
+
+    // Callbacks que main.js puede engachar
+    this.onHealthChange = null; // (health, maxHealth) => {}
+    this.onDeath = null;        // () => {}
 
     this.keys = {};
     this.isLocked = false;
 
     this._setupPointerLock();
     this._setupKeyboard();
+    this._setupReliability();
   }
 
-  // ---------- Pointer Lock (para poder mirar con el mouse como en un FPS) ----------
+  // ---------- Pointer Lock (mouse-look en PC) ----------
   _setupPointerLock() {
     this.domElement.addEventListener('click', () => {
       if (!this.isLocked) this.domElement.requestPointerLock();
@@ -46,14 +61,24 @@ export class Player {
       this.isLocked = document.pointerLockElement === this.domElement;
     });
 
+    // Si el navegador rechaza el pointer lock (pasa a veces en el primer click),
+    // no rompemos nada: el usuario puede volver a clickear.
+    document.addEventListener('pointerlockerror', () => {
+      this.isLocked = false;
+    });
+
     document.addEventListener('mousemove', (e) => {
       if (!this.isLocked) return;
-      const sensitivity = 0.0022;
-      this.yaw -= e.movementX * sensitivity;
-      this.pitch -= e.movementY * sensitivity;
-      const limit = Math.PI / 2 - 0.05;
-      this.pitch = Math.max(-limit, Math.min(limit, this.pitch));
+      this.look(e.movementX, e.movementY, 0.0022);
     });
+  }
+
+  // Rotar la cámara. Lo usan tanto el mouse (PC) como el touch (celular/tablet).
+  look(dx, dy, sensitivity = 0.0035) {
+    this.yaw -= dx * sensitivity;
+    this.pitch -= dy * sensitivity;
+    const limit = Math.PI / 2 - 0.05;
+    this.pitch = Math.max(-limit, Math.min(limit, this.pitch));
   }
 
   _setupKeyboard() {
@@ -61,9 +86,21 @@ export class Player {
     window.addEventListener('keyup', (e) => { this.keys[e.code] = false; });
   }
 
+  // ---------------------------------------------------------
+  // Fixes de confiabilidad: si la pestaña/ventana pierde el foco
+  // (alt-tab, cambiar de app, abrir devtools) las teclas pueden
+  // quedar "trabadas" en `true` porque nunca llega el keyup.
+  // Reseteamos todo al perder el foco para que el player no siga
+  // caminando solo.
+  // ---------------------------------------------------------
+  _setupReliability() {
+    window.addEventListener('blur', () => { this.keys = {}; });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this.keys = {};
+    });
+  }
+
   // ---------- Colisión simple contra el mundo ----------
-  // Comprueba si una caja (AABB) centrada en (x,y,z) con las medidas del
-  // jugador choca contra algún bloque sólido.
   _collides(x, y, z) {
     const minX = Math.floor(x - PLAYER_RADIUS);
     const maxX = Math.floor(x + PLAYER_RADIUS);
@@ -83,9 +120,9 @@ export class Player {
   }
 
   update(dt) {
-    dt = Math.min(dt, 0.05); // clamp para evitar saltos raros si el tab pierde foco
+    if (this.isDead) return; // congelado mientras se muestra la pantalla de muerte
+    dt = Math.min(dt, 0.05);
 
-    // --- Dirección de movimiento según hacia dónde miramos (solo yaw) ---
     const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
 
@@ -101,14 +138,12 @@ export class Player {
     this.velocity.x = moveX * WALK_SPEED;
     this.velocity.z = moveZ * WALK_SPEED;
 
-    // --- Salto y gravedad ---
     if (this.keys['Space'] && this.onGround) {
       this.velocity.y = JUMP_SPEED;
       this.onGround = false;
     }
     this.velocity.y += GRAVITY * dt;
 
-    // --- Mover con colisión por eje (así al chocar con una pared no se frena en Y) ---
     const next = this.position.clone();
 
     next.x += this.velocity.x * dt;
@@ -128,6 +163,19 @@ export class Player {
 
     this.position.copy(next);
 
+    // --- Seguimiento de caída libre para calcular daño al aterrizar ---
+    if (!this.onGround) {
+      if (this._peakY === null || this.position.y > this._peakY) this._peakY = this.position.y;
+    }
+    if (this.onGround && !this._wasOnGround) {
+      if (this._peakY !== null) {
+        const fallDistance = this._peakY - this.position.y;
+        this._applyFallDamage(fallDistance);
+      }
+      this._peakY = null;
+    }
+    this._wasOnGround = this.onGround;
+
     // --- Aplicar a la cámara ---
     this.camera.position.set(this.position.x, this.position.y + EYE_HEIGHT, this.position.z);
     this.camera.rotation.order = 'YXZ';
@@ -135,17 +183,49 @@ export class Player {
     this.camera.rotation.x = this.pitch;
   }
 
+  _applyFallDamage(fallDistance) {
+    if (this.mode !== 'survival') return; // en creativo no hay daño
+    if (fallDistance > SAFE_FALL_BLOCKS) {
+      const damage = Math.floor((fallDistance - SAFE_FALL_BLOCKS) * 2);
+      this.takeDamage(damage);
+    }
+  }
+
+  takeDamage(amount) {
+    if (this.mode !== 'survival' || this.isDead || amount <= 0) return;
+    this.health = Math.max(0, this.health - amount);
+    if (this.onHealthChange) this.onHealthChange(this.health, this.maxHealth);
+    if (this.health <= 0) {
+      this.isDead = true;
+      if (this.onDeath) this.onDeath();
+    }
+  }
+
   respawnAt(x, z) {
     const y = this.world.getSpawnHeight(x, z);
     this.position.set(x, y, z);
     this.velocity.set(0, 0, 0);
+    this._peakY = null;
+    this.isDead = false;
+    if (this.mode === 'survival') {
+      this.health = this.maxHealth;
+      if (this.onHealthChange) this.onHealthChange(this.health, this.maxHealth);
+    }
+  }
+
+  // Restaura una posición/salud guardadas (usado al continuar una partida)
+  restoreState({ x, y, z, yaw, pitch, health } = {}) {
+    if (x !== undefined) this.position.set(x, y, z);
+    if (yaw !== undefined) this.yaw = yaw;
+    if (pitch !== undefined) this.pitch = pitch;
+    if (health !== undefined && this.mode === 'survival') {
+      this.health = health;
+      if (this.onHealthChange) this.onHealthChange(this.health, this.maxHealth);
+    }
   }
 
   // ---------------------------------------------------------
   // Raycasting voxel (algoritmo DDA de Amanatides & Woo).
-  // Devuelve el primer bloque sólido que "toca" el rayo desde
-  // la cámara, junto con la celda vacía justo antes (para saber
-  // dónde colocar un bloque nuevo) y la normal de la cara.
   // ---------------------------------------------------------
   raycastBlock(maxDistance = 6) {
     const origin = this.camera.position.clone();
@@ -193,6 +273,6 @@ export class Player {
       }
     }
 
-    return null; // no se encontró ningún bloque en rango
+    return null;
   }
 }
