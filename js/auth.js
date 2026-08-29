@@ -9,7 +9,7 @@
 // ============================================================
 
 // 👉 Esta URL se reemplaza por la del backend real una vez desplegado en Render.
-export const API_BASE_URL = 'https://webcraft-server.onrender.com';
+API_BASE_URL = 'https://webcraft-server-jsx9.onrender.com';
 
 const TOKEN_KEY = 'webcraft_token';
 const USERNAME_KEY = 'webcraft_username';
