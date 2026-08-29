@@ -1,0 +1,165 @@
+// ============================================================
+// touch-controls.js - Controles para celular y tablet.
+// En PC usamos mouse (Pointer Lock) + teclado. En pantallas
+// táctiles no existe eso, así que armamos:
+//   - Joystick virtual (mitad izquierda) para moverse
+//   - Arrastre con el dedo (mitad derecha) para mirar alrededor
+//   - Botones para saltar / romper / colocar
+//
+// Este módulo no toca la lógica del juego: solo simula las
+// mismas señales que ya entiende Player (this.keys y this.look())
+// y llama a los mismos callbacks de romper/colocar que usa el
+// mouse en main.js. Así el resto del código no se duplica.
+// ============================================================
+
+export function isTouchDevice() {
+  return ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+}
+
+export class TouchControls {
+  constructor(player, { onBreak, onPlace } = {}) {
+    this.player = player;
+    this.onBreak = onBreak;
+    this.onPlace = onPlace;
+
+    this.joystickTouchId = null;
+    this.lookTouchId = null;
+    this.joystickCenter = { x: 0, y: 0 };
+    this.lookLast = { x: 0, y: 0 };
+
+    this._buildUI();
+    this._setupJoystick();
+    this._setupLook();
+    this._setupButtons();
+  }
+
+  _buildUI() {
+    const root = document.createElement('div');
+    root.id = 'touch-controls';
+    root.innerHTML = `
+      <div id="joystick-zone"><div id="joystick-knob"></div></div>
+      <div id="look-zone"></div>
+      <div id="touch-action-buttons">
+        <button id="touch-break" aria-label="Romper bloque">⛏️</button>
+        <button id="touch-place" aria-label="Colocar bloque">🧱</button>
+        <button id="touch-jump" aria-label="Saltar">⬆</button>
+      </div>
+    `;
+    document.body.appendChild(root);
+    this.root = root;
+    this.joyZone = document.getElementById('joystick-zone');
+    this.joyKnob = document.getElementById('joystick-knob');
+    this.lookZone = document.getElementById('look-zone');
+  }
+
+  // ---------- Joystick de movimiento (izquierda) ----------
+  _setupJoystick() {
+    const zone = this.joyZone;
+    const radius = 45; // debe coincidir con el tamaño visual del joystick en el CSS
+
+    const start = (e) => {
+      const t = e.changedTouches[0];
+      this.joystickTouchId = t.identifier;
+      const rect = zone.getBoundingClientRect();
+      this.joystickCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      e.preventDefault();
+    };
+
+    const move = (e) => {
+      for (const t of e.changedTouches) {
+        if (t.identifier !== this.joystickTouchId) continue;
+        let dx = t.clientX - this.joystickCenter.x;
+        let dy = t.clientY - this.joystickCenter.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > radius) { dx = (dx / dist) * radius; dy = (dy / dist) * radius; }
+        this.joyKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+
+        const nx = dx / radius, ny = dy / radius;
+        const threshold = 0.25;
+        this.player.keys['KeyW'] = ny < -threshold;
+        this.player.keys['KeyS'] = ny > threshold;
+        this.player.keys['KeyD'] = nx > threshold;
+        this.player.keys['KeyA'] = nx < -threshold;
+        e.preventDefault();
+      }
+    };
+
+    const end = (e) => {
+      for (const t of e.changedTouches) {
+        if (t.identifier !== this.joystickTouchId) continue;
+        this.joystickTouchId = null;
+        this.joyKnob.style.transform = 'translate(0px, 0px)';
+        this.player.keys['KeyW'] = false;
+        this.player.keys['KeyS'] = false;
+        this.player.keys['KeyD'] = false;
+        this.player.keys['KeyA'] = false;
+      }
+    };
+
+    zone.addEventListener('touchstart', start, { passive: false });
+    window.addEventListener('touchmove', move, { passive: false });
+    window.addEventListener('touchend', end);
+    window.addEventListener('touchcancel', end);
+  }
+
+  // ---------- Arrastre para mirar alrededor (derecha) ----------
+  _setupLook() {
+    const zone = this.lookZone;
+
+    const start = (e) => {
+      const t = e.changedTouches[0];
+      this.lookTouchId = t.identifier;
+      this.lookLast = { x: t.clientX, y: t.clientY };
+      e.preventDefault();
+    };
+
+    const move = (e) => {
+      for (const t of e.changedTouches) {
+        if (t.identifier !== this.lookTouchId) continue;
+        const dx = t.clientX - this.lookLast.x;
+        const dy = t.clientY - this.lookLast.y;
+        this.lookLast = { x: t.clientX, y: t.clientY };
+        this.player.look(dx, dy, 0.0045);
+        e.preventDefault();
+      }
+    };
+
+    const end = (e) => {
+      for (const t of e.changedTouches) {
+        if (t.identifier === this.lookTouchId) this.lookTouchId = null;
+      }
+    };
+
+    zone.addEventListener('touchstart', start, { passive: false });
+    window.addEventListener('touchmove', move, { passive: false });
+    window.addEventListener('touchend', end);
+    window.addEventListener('touchcancel', end);
+  }
+
+  // ---------- Botones de acción ----------
+  _setupButtons() {
+    const jumpBtn = document.getElementById('touch-jump');
+    const breakBtn = document.getElementById('touch-break');
+    const placeBtn = document.getElementById('touch-place');
+
+    const press = (el, code) => {
+      el.addEventListener('touchstart', (e) => { e.preventDefault(); this.player.keys[code] = true; }, { passive: false });
+      el.addEventListener('touchend', (e) => { e.preventDefault(); this.player.keys[code] = false; });
+      el.addEventListener('touchcancel', () => { this.player.keys[code] = false; });
+    };
+    press(jumpBtn, 'Space');
+
+    breakBtn.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      if (this.onBreak) this.onBreak();
+    }, { passive: false });
+
+    placeBtn.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      if (this.onPlace) this.onPlace();
+    }, { passive: false });
+  }
+
+  show() { this.root.classList.remove('hidden'); }
+  hide() { this.root.classList.add('hidden'); }
+}
