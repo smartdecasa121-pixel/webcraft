@@ -253,6 +253,14 @@ html, body {
 }
 .auth-tab.active { background: #6fbf3b; }
 
+#auth-form-title {
+  font-size: 20px;
+  color: #fff;
+  text-shadow: 1px 1px 0 #000;
+  text-align: center;
+  margin-bottom: 2px;
+}
+
 #auth-form {
   margin-top: 14px;
   display: flex;
@@ -366,8 +374,8 @@ html, body {
   position: absolute;
   right: 24px; bottom: 24px;
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  align-items: flex-end;
+  gap: 14px;
   pointer-events: auto;
 }
 #touch-action-buttons button {
@@ -379,9 +387,19 @@ html, body {
   font-size: 22px;
   touch-action: none;
 }
-#touch-jump {
-  position: absolute;
-  left: 160px; bottom: 24px;
+
+/* ===================== BANNER DE ERROR VISIBLE ===================== */
+#fatal-error {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%;
+  z-index: 999;
+  background: #b23b3b;
+  color: #fff;
+  font-size: 13px;
+  padding: 10px 16px;
+  text-align: center;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
 }
 
 /* En pantallas táctiles chicas, agrandamos un poco los botones del hotbar para que se puedan tocar bien */
