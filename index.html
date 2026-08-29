@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -24,10 +25,11 @@
 
     <div id="auth-tabs">
       <button id="tab-login" class="auth-tab active">Iniciar sesión</button>
-      <button id="tab-register" class="auth-tab">Crear usuario</button>
+      <button id="tab-register" class="auth-tab">Crear perfil</button>
     </div>
 
     <form id="auth-form" autocomplete="off">
+      <h2 id="auth-form-title">Iniciar sesión</h2>
       <input type="text" id="auth-username" placeholder="Usuario" autocomplete="username" required minlength="3" maxlength="20" />
       <input type="password" id="auth-password" placeholder="Contraseña" autocomplete="current-password" required minlength="4" maxlength="64" />
       <button type="submit" id="auth-submit">Iniciar sesión</button>
@@ -77,6 +79,31 @@
     <div id="death-message" class="hidden">💀 Moriste... reapareciendo</div>
     <div id="save-indicator" class="hidden">💾 Guardado</div>
   </div>
+
+  <!-- Aviso de error visible (si algo falla, se ve acá en vez de que los botones "no hagan nada") -->
+  <div id="fatal-error" class="hidden"></div>
+
+  <!-- Red de seguridad: este script NO es un módulo, así que se ejecuta
+       siempre, incluso si main.js (o algo que importa) falla al cargar.
+       Así, si hay un error, SIEMPRE lo vas a ver en pantalla en vez de
+       tener botones que "no hacen nada" sin ninguna pista. -->
+  <script>
+    (function () {
+      function showEarlyError(msg) {
+        var el = document.getElementById('fatal-error');
+        if (!el) return;
+        el.textContent = '⚠️ Error cargando el juego: ' + msg;
+        el.classList.remove('hidden');
+      }
+      window.addEventListener('error', function (e) {
+        showEarlyError((e.message || (e.error && e.error.message) || 'error desconocido') +
+          (e.filename ? ' (' + e.filename + ':' + e.lineno + ')' : ''));
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        showEarlyError((e.reason && e.reason.message) || e.reason || 'promesa rechazada');
+      });
+    })();
+  </script>
 
   <!-- Aquí se monta el <canvas> de Three.js -->
   <div id="game-container"></div>
