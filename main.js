@@ -1,10 +1,13 @@
 // ============================================================
 // main.js - Punto de entrada del juego.
-// Flujo completo:
-//   1) Pantalla de login/registro (o "jugar como invitado")
-//   2) Pantalla de elegir modo (Creativo / Supervivencia)
-//   3) Juego: arma la escena de Three.js y corre el game loop
-//   4) Autoguardado periódico del progreso (si hay sesión)
+//
+// IMPORTANTE sobre el orden del código en este archivo:
+// Conectamos TODOS los botones de la interfaz (login, registro,
+// invitado, logout, modo creativo/supervivencia) ANTES de armar
+// el motor 3D (Three.js). Así, si algo falla al crear la escena
+// 3D (por ejemplo un navegador viejo sin WebGL), los botones de
+// login/registro siguen funcionando en vez de quedar "muertos"
+// junto con el resto del script.
 // ============================================================
 import * as THREE from 'three';
 import { World } from './world.js';
@@ -14,10 +17,24 @@ import { BLOCK, BLOCK_DATA } from './blocks.js';
 import { TouchControls, isTouchDevice } from './touch-controls.js';
 import * as Auth from './auth.js';
 
+// ---------- Aviso de error visible en pantalla ----------
+// Si algo se rompe, lo mostramos acá en vez de dejar los botones
+// "sin hacer nada" sin ninguna pista de qué pasó.
+const fatalErrorEl = document.getElementById('fatal-error');
+function showFatalError(context, err) {
+  console.error(`[WebCraft] Error en ${context}:`, err);
+  if (!fatalErrorEl) return;
+  fatalErrorEl.textContent = `⚠️ Ups, algo falló (${context}): ${err && err.message ? err.message : err}`;
+  fatalErrorEl.classList.remove('hidden');
+}
+window.addEventListener('error', (e) => showFatalError('script', e.error || e.message));
+window.addEventListener('unhandledrejection', (e) => showFatalError('promesa', e.reason));
+
 // ---------- Elementos del DOM ----------
 const authScreen = document.getElementById('auth-screen');
 const authTabLogin = document.getElementById('tab-login');
 const authTabRegister = document.getElementById('tab-register');
+const authFormTitle = document.getElementById('auth-form-title');
 const authForm = document.getElementById('auth-form');
 const authUsername = document.getElementById('auth-username');
 const authPassword = document.getElementById('auth-password');
@@ -43,11 +60,11 @@ const gameContainer = document.getElementById('game-container');
 
 // ---------- Estado de sesión / partida guardada ----------
 let isGuest = false;
-let savedGame = null; // lo que devuelve el backend, si había una partida previa
-let authMode = 'login'; // 'login' | 'register'
+let savedGame = null;
+let authMode = 'login';
 
 // ============================================================
-// PASO 1: Login / Registro
+// FASE 1: Conectar TODOS los botones de la interfaz primero
 // ============================================================
 
 authTabLogin.addEventListener('click', () => setAuthMode('login'));
@@ -57,7 +74,9 @@ function setAuthMode(mode) {
   authMode = mode;
   authTabLogin.classList.toggle('active', mode === 'login');
   authTabRegister.classList.toggle('active', mode === 'register');
-  authSubmit.textContent = mode === 'login' ? 'Iniciar sesión' : 'Crear usuario';
+  const label = mode === 'login' ? 'Iniciar sesión' : 'Crear perfil';
+  authFormTitle.textContent = label;
+  authSubmit.textContent = label;
   authPassword.autocomplete = mode === 'login' ? 'current-password' : 'new-password';
   hideAuthError();
 }
@@ -109,20 +128,17 @@ logoutBtn.addEventListener('click', () => {
   authPassword.value = '';
 });
 
-// Si ya había una sesión guardada en este navegador, entramos directo
-(async function autoLoginIfPossible() {
-  if (Auth.getToken()) {
-    authStatus.classList.remove('hidden');
-    authStatus.textContent = 'Recuperando tu sesión...';
-    try {
-      await goToStartScreen();
-    } catch (err) {
-      // El token puede haber vencido o el server puede estar despertando (Render "duerme" servicios gratis inactivos)
-      Auth.clearSession();
-      authStatus.classList.add('hidden');
-    }
-  }
-})();
+// Estos dos quedan conectados ya mismo. La función startGame() se define
+// más abajo, pero en JavaScript las funciones declaradas con "function"
+// están disponibles en todo el archivo aunque el click llegue antes
+// de leer esa parte del código (hoisting) — así que esto funciona
+// aunque el motor 3D esté definido más abajo.
+creativeBtn.addEventListener('click', () => startGame('creative'));
+survivalBtn.addEventListener('click', () => startGame('survival'));
+
+// ============================================================
+// FASE 2: Flujo de login / partida guardada
+// ============================================================
 
 async function goToStartScreen() {
   authScreen.classList.add('hidden');
@@ -135,14 +151,9 @@ async function goToStartScreen() {
     try {
       savedGame = await Auth.loadGame();
     } catch {
-      savedGame = null; // si el backend no respondió, seguimos igual sin bloquear al usuario
+      savedGame = null;
     }
-    if (savedGame) {
-      continueHint.classList.remove('hidden');
-      // Preseleccionamos visualmente el modo guardado resaltando el botón correspondiente
-    } else {
-      continueHint.classList.add('hidden');
-    }
+    continueHint.classList.toggle('hidden', !savedGame);
   } else {
     welcomeText.textContent = 'Jugando como invitado (tu progreso no se va a guardar).';
     logoutBtn.classList.add('hidden');
@@ -150,91 +161,127 @@ async function goToStartScreen() {
   }
 }
 
+(async function autoLoginIfPossible() {
+  if (Auth.getToken()) {
+    authStatus.classList.remove('hidden');
+    authStatus.textContent = 'Recuperando tu sesión...';
+    try {
+      await goToStartScreen();
+    } catch (err) {
+      Auth.clearSession();
+    } finally {
+      authStatus.classList.add('hidden');
+    }
+  }
+})();
+
 // ============================================================
-// PASO 2 y 3: Elegir modo -> Armar el juego
+// FASE 3: Motor 3D (Three.js). Todo lo riesgoso va acá adentro,
+// envuelto en try/catch, para que un fallo acá no tumbe los
+// botones de arriba (que ya están conectados).
 // ============================================================
 
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87ceeb);
-scene.fog = new THREE.Fog(0x87ceeb, 40, 130);
-
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 500);
-
-const renderer = new THREE.WebGLRenderer({ antialias: false });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.domElement.setAttribute('tabindex', '0'); // asegura que el canvas pueda recibir foco/teclado
-gameContainer.appendChild(renderer.domElement);
-
-const ambient = new THREE.AmbientLight(0xffffff, 0.55);
-scene.add(ambient);
-const sun = new THREE.DirectionalLight(0xffffff, 0.85);
-sun.position.set(80, 120, 40);
-scene.add(sun);
-scene.add(sun.target);
-
-let world = null;
-let player = null;
-let inventory = null;
-let touchControls = null;
+let scene, camera, renderer, sun, world, player, inventory, touchControls;
+let highlightMesh;
 let gameStarted = false;
 let gameMode = 'creative';
+let engineReady = false;
 
-const highlightGeo = new THREE.BoxGeometry(1.002, 1.002, 1.002);
-const highlightMesh = new THREE.LineSegments(
-  new THREE.EdgesGeometry(highlightGeo),
-  new THREE.LineBasicMaterial({ color: 0x000000 })
-);
-highlightMesh.visible = false;
-scene.add(highlightMesh);
+try {
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x87ceeb);
+  scene.fog = new THREE.Fog(0x87ceeb, 40, 130);
 
-creativeBtn.addEventListener('click', () => startGame('creative'));
-survivalBtn.addEventListener('click', () => startGame('survival'));
+  camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 500);
+
+  renderer = new THREE.WebGLRenderer({ antialias: false });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.domElement.setAttribute('tabindex', '0');
+  gameContainer.appendChild(renderer.domElement);
+
+  const ambient = new THREE.AmbientLight(0xffffff, 0.55);
+  scene.add(ambient);
+  sun = new THREE.DirectionalLight(0xffffff, 0.85);
+  sun.position.set(80, 120, 40);
+  scene.add(sun);
+  scene.add(sun.target);
+
+  const highlightGeo = new THREE.BoxGeometry(1.002, 1.002, 1.002);
+  highlightMesh = new THREE.LineSegments(
+    new THREE.EdgesGeometry(highlightGeo),
+    new THREE.LineBasicMaterial({ color: 0x000000 })
+  );
+  highlightMesh.visible = false;
+  scene.add(highlightMesh);
+
+  renderer.domElement.addEventListener('mousedown', (e) => {
+    if (!player || !player.isLocked || !gameStarted) return;
+    if (e.button === 0) breakBlock();
+    else if (e.button === 2) placeBlock();
+  });
+  renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  engineReady = true;
+  requestAnimationFrame(animate);
+} catch (err) {
+  showFatalError('inicializar el motor 3D', err);
+}
 
 function startGame(mode) {
-  gameMode = mode;
-  startScreen.classList.add('hidden');
-  hud.classList.remove('hidden');
-  gameStarted = true;
-
-  world = new World(scene, 20260827);
-  player = new Player(camera, renderer.domElement, world, mode);
-  inventory = new Inventory(hotbarEl, mode);
-
-  if (mode === 'survival') {
-    healthBarEl.classList.remove('hidden');
-    player.onHealthChange = renderHealthBar;
-    player.onDeath = handleDeath;
-    renderHealthBar(player.health, player.maxHealth);
-  } else {
-    healthBarEl.classList.add('hidden');
+  if (!engineReady) {
+    showFatalError('iniciar el juego', new Error('El motor 3D no se pudo cargar. Recargá la página.'));
+    return;
   }
+  try {
+    gameMode = mode;
+    startScreen.classList.add('hidden');
+    hud.classList.remove('hidden');
+    gameStarted = true;
 
-  world.update(0, 0);
+    world = new World(scene, 20260827);
+    player = new Player(camera, renderer.domElement, world, mode);
+    inventory = new Inventory(hotbarEl, mode);
 
-  // Si había una partida guardada Y coincide el modo, retomamos justo donde quedó
-  if (savedGame && savedGame.mode === mode && !isGuest) {
-    player.restoreState(savedGame.player);
-    if (mode === 'survival') inventory.restoreCounts(savedGame.inventory);
-  } else {
-    player.respawnAt(0.5, 0.5);
+    if (mode === 'survival') {
+      healthBarEl.classList.remove('hidden');
+      player.onHealthChange = renderHealthBar;
+      player.onDeath = handleDeath;
+      renderHealthBar(player.health, player.maxHealth);
+    } else {
+      healthBarEl.classList.add('hidden');
+    }
+
+    world.update(0, 0);
+
+    if (savedGame && savedGame.mode === mode && !isGuest) {
+      player.restoreState(savedGame.player);
+      if (mode === 'survival') inventory.restoreCounts(savedGame.inventory);
+    } else {
+      player.respawnAt(0.5, 0.5);
+    }
+
+    if (isTouchDevice()) {
+      touchControls = new TouchControls(player, { onBreak: breakBlock, onPlace: placeBlock });
+    }
+
+    if (!isTouchDevice()) renderer.domElement.requestPointerLock();
+
+    if (!isGuest && Auth.getToken()) startAutoSave();
+  } catch (err) {
+    showFatalError('iniciar la partida', err);
   }
-
-  // Controles táctiles (solo se activan solos si el dispositivo es táctil)
-  if (isTouchDevice()) {
-    touchControls = new TouchControls(player, { onBreak: breakBlock, onPlace: placeBlock });
-  }
-
-  // Intento de Pointer Lock inicial en PC (en táctil no hace nada, y si el navegador
-  // lo rechaza por no venir de un gesto directo, el click en el canvas lo vuelve a pedir)
-  if (!isTouchDevice()) renderer.domElement.requestPointerLock();
-
-  if (!isGuest && Auth.getToken()) startAutoSave();
 }
 
 // ---------- Romper / colocar bloques ----------
 function breakBlock() {
-  if (!gameStarted || player.isDead) return;
+  if (!gameStarted || !player || player.isDead) return;
   const hit = player.raycastBlock(6);
   if (!hit) return;
   const data = BLOCK_DATA[hit.blockId];
@@ -245,7 +292,7 @@ function breakBlock() {
 }
 
 function placeBlock() {
-  if (!gameStarted || player.isDead) return;
+  if (!gameStarted || !player || player.isDead) return;
   const hit = player.raycastBlock(6);
   if (!hit) return;
   if (gameMode === 'survival' && !inventory.canPlaceSelected()) return;
@@ -256,13 +303,6 @@ function placeBlock() {
   world.setBlock(p.x, p.y, p.z, inventory.selectedBlock);
   if (gameMode === 'survival') inventory.consumeSelected();
 }
-
-renderer.domElement.addEventListener('mousedown', (e) => {
-  if (!player || !player.isLocked || !gameStarted) return;
-  if (e.button === 0) breakBlock();
-  else if (e.button === 2) placeBlock();
-});
-renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
 
 function wouldCollideWithPlayer(blockPos) {
   const px = player.position.x, py = player.position.y, pz = player.position.z;
@@ -294,14 +334,12 @@ function handleDeath() {
   }, 1500);
 }
 
-// ============================================================
-// Autoguardado (solo si hay sesión, no como invitado)
-// ============================================================
+// ---------- Autoguardado ----------
 let autoSaveInterval = null;
 
 function startAutoSave() {
   if (autoSaveInterval) clearInterval(autoSaveInterval);
-  autoSaveInterval = setInterval(persistGame, 15000); // cada 15s
+  autoSaveInterval = setInterval(persistGame, 15000);
   window.addEventListener('beforeunload', persistGame);
 }
 
@@ -323,16 +361,9 @@ async function persistGame() {
     saveIndicatorEl.classList.add('show');
     setTimeout(() => saveIndicatorEl.classList.remove('show'), 1200);
   } catch {
-    // Si falla el guardado (ej. sin internet momentáneo) simplemente reintentamos en el próximo ciclo
+    // reintenta solo en el próximo ciclo
   }
 }
-
-// ---------- Responsive ----------
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
 
 // ---------- Bucle principal ----------
 let lastTime = performance.now();
@@ -369,155 +400,3 @@ function animate(now) {
 
   renderer.render(scene, camera);
 }
-
-requestAnimationFrame(animate);
-// ============================================================
-// main.js - Punto de entrada del juego.
-// Arma la escena de Three.js (cámara, luces, cielo, niebla),
-// crea el mundo, el jugador y el inventario, y corre el bucle
-// principal (game loop): actualizar física -> generar chunks
-// cercanos -> manejar clicks para romper/poner bloques -> dibujar.
-// ============================================================
-import * as THREE from 'three';
-import { World } from './world.js';
-import { Player } from './player.js';
-import { Inventory } from './inventory.js';
-import { BLOCK, BLOCK_DATA } from './blocks.js';
-
-// ---------- Elementos del DOM ----------
-const startScreen = document.getElementById('start-screen');
-const startBtn = document.getElementById('start-btn');
-const hud = document.getElementById('hud');
-const hotbarEl = document.getElementById('hotbar');
-const debugEl = document.getElementById('debug-info');
-const gameContainer = document.getElementById('game-container');
-
-// ---------- Escena, cámara y renderer ----------
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87ceeb);
-scene.fog = new THREE.Fog(0x87ceeb, 40, 130);
-
-const camera = new THREE.PerspectiveCamera(
-  75, window.innerWidth / window.innerHeight, 0.1, 500
-);
-
-const renderer = new THREE.WebGLRenderer({ antialias: false });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(window.innerWidth, window.innerHeight);
-gameContainer.appendChild(renderer.domElement);
-
-// ---------- Luces (luz ambiente + sol direccional simple) ----------
-const ambient = new THREE.AmbientLight(0xffffff, 0.55);
-scene.add(ambient);
-
-const sun = new THREE.DirectionalLight(0xffffff, 0.85);
-sun.position.set(80, 120, 40);
-scene.add(sun);
-scene.add(sun.target);
-
-// ---------- Mundo, jugador e inventario ----------
-const world = new World(scene, 20260827); // seed fijo -> mismo mundo siempre
-const player = new Player(camera, renderer.domElement, world);
-const inventory = new Inventory(hotbarEl);
-
-// Marcador (wireframe) que resalta el bloque al que estamos apuntando
-const highlightGeo = new THREE.BoxGeometry(1.002, 1.002, 1.002);
-const highlightEdges = new THREE.EdgesGeometry(highlightGeo);
-const highlightMesh = new THREE.LineSegments(
-  highlightEdges, new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 })
-);
-highlightMesh.visible = false;
-scene.add(highlightMesh);
-
-// ---------- Iniciar el juego al hacer click en "Jugar" ----------
-let gameStarted = false;
-startBtn.addEventListener('click', () => {
-  startScreen.classList.add('hidden');
-  hud.classList.remove('hidden');
-  renderer.domElement.requestPointerLock();
-  gameStarted = true;
-
-  // Generamos el chunk inicial antes de spawnear para no caer al vacío
-  world.update(0, 0);
-  player.respawnAt(0.5, 0.5);
-});
-
-// ---------- Romper / colocar bloques con click ----------
-renderer.domElement.addEventListener('mousedown', (e) => {
-  if (!player.isLocked || !gameStarted) return;
-  const hit = player.raycastBlock(6);
-  if (!hit) return;
-
-  if (e.button === 0) {
-    // Click izquierdo: romper (si no es irrompible como el bedrock)
-    const data = worldBlockData(hit.blockId);
-    if (data && data.unbreakable) return;
-    world.setBlock(hit.position.x, hit.position.y, hit.position.z, BLOCK.AIR);
-  } else if (e.button === 2) {
-    // Click derecho: colocar el bloque seleccionado, si el hueco no pisa al jugador
-    const p = hit.previousPosition;
-    if (!wouldCollideWithPlayer(p)) {
-      world.setBlock(p.x, p.y, p.z, inventory.selectedBlock);
-    }
-  }
-});
-// Evitamos que aparezca el menú contextual del navegador con el click derecho
-renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
-
-function worldBlockData(id) { return BLOCK_DATA[id]; }
-
-function wouldCollideWithPlayer(blockPos) {
-  const px = player.position.x, py = player.position.y, pz = player.position.z;
-  const withinX = Math.abs(blockPos.x + 0.5 - px) < 0.7;
-  const withinZ = Math.abs(blockPos.z + 0.5 - pz) < 0.7;
-  const withinY = blockPos.y < py + 1.8 && blockPos.y + 1 > py;
-  return withinX && withinZ && withinY;
-}
-
-// ---------- Responsive ----------
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
-
-// ---------- Bucle principal ----------
-let lastTime = performance.now();
-let frameCount = 0, fpsAccum = 0, fps = 0;
-
-function animate(now) {
-  requestAnimationFrame(animate);
-  const dt = (now - lastTime) / 1000;
-  lastTime = now;
-
-  if (gameStarted) {
-    player.update(dt);
-    world.update(player.position.x, player.position.z);
-
-    // El sol "sigue" al jugador para que siempre haya sombra/luz cerca
-    sun.position.set(player.position.x + 80, 120, player.position.z + 40);
-    sun.target.position.set(player.position.x, 0, player.position.z);
-
-    // Actualizamos el marcador del bloque apuntado
-    const hit = player.raycastBlock(6);
-    if (hit) {
-      highlightMesh.visible = true;
-      highlightMesh.position.set(hit.position.x + 0.5, hit.position.y + 0.5, hit.position.z + 0.5);
-    } else {
-      highlightMesh.visible = false;
-    }
-
-    // Debug info (FPS + posición), útil también para verificar que el juego "vive"
-    fpsAccum += 1 / dt; frameCount++;
-    if (frameCount >= 20) { fps = Math.round(fpsAccum / frameCount); fpsAccum = 0; frameCount = 0; }
-    const selectedName = BLOCK_DATA[inventory.selectedBlock]?.name || '-';
-    debugEl.textContent =
-      `WebCraft | FPS: ${fps}\n` +
-      `Pos: ${player.position.x.toFixed(1)}, ${player.position.y.toFixed(1)}, ${player.position.z.toFixed(1)}\n` +
-      `Bloque seleccionado: ${selectedName}`;
-  }
-
-  renderer.render(scene, camera);
-}
-
-requestAnimationFrame(animate);
