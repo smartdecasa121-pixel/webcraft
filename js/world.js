@@ -316,12 +316,18 @@ export class World {
     }
   }
 
-  // Altura del terreno más alto ocupado en (x,z), útil para spawnear al jugador arriba del piso
+  // Altura del terreno más alto ocupado en (x,z), útil para spawnear al jugador arriba del piso.
+  // Buscamos el primer hueco con al menos 2 bloques de aire libres (pies + cabeza) sobre
+  // suelo sólido, escaneando de ABAJO hacia arriba. Esto evita que el jugador aparezca
+  // atascado dentro de hojas u otros obstáculos que "isSolid" también cuenta como sólidos.
   getSpawnHeight(x, z) {
-    for (let y = CHUNK_HEIGHT - 1; y >= 0; y--) {
-      if (isSolid(this.getBlock(x, y, z))) return y + 1;
+    for (let y = 1; y < CHUNK_HEIGHT - 2; y++) {
+      const groundBelowIsSolid = isSolid(this.getBlock(x, y - 1, z));
+      const feetAreClear = !isSolid(this.getBlock(x, y, z));
+      const headIsClear = !isSolid(this.getBlock(x, y + 1, z));
+      if (groundBelowIsSolid && feetAreClear && headIsClear) return y;
     }
-    return SEA_LEVEL + 1;
+    return SEA_LEVEL + 3; // respaldo por si no se encontró un hueco válido
   }
 
   getAllTerrainMeshes() {
