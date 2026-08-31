@@ -392,10 +392,13 @@ function animate(now) {
     fpsAccum += 1 / Math.max(dt, 0.0001); frameCount++;
     if (frameCount >= 20) { fps = Math.round(fpsAccum / frameCount); fpsAccum = 0; frameCount = 0; }
     const selectedName = BLOCK_DATA[inventory.selectedBlock]?.name || '-';
+    const k = player.keys;
     debugEl.textContent =
       `WebCraft | FPS: ${fps}\n` +
       `Pos: ${player.position.x.toFixed(1)}, ${player.position.y.toFixed(1)}, ${player.position.z.toFixed(1)}\n` +
-      `Bloque: ${selectedName}`;
+      `Bloque: ${selectedName}\n` +
+      `Locked: ${player.isLocked} | OnGround: ${player.onGround}\n` +
+      `W:${!!k['KeyW']} A:${!!k['KeyA']} S:${!!k['KeyS']} D:${!!k['KeyD']} Space:${!!k['Space']}`;
   }
 
   renderer.render(scene, camera);
