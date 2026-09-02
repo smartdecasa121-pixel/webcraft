@@ -17,9 +17,6 @@ import { BLOCK, BLOCK_DATA } from './blocks.js';
 import { TouchControls, isTouchDevice } from './touch-controls.js';
 import * as Auth from './auth.js';
 
-// ---------- Aviso de error visible en pantalla ----------
-// Si algo se rompe, lo mostramos acá en vez de dejar los botones
-// "sin hacer nada" sin ninguna pista de qué pasó.
 const fatalErrorEl = document.getElementById('fatal-error');
 function showFatalError(context, err) {
   console.error(`[WebCraft] Error en ${context}:`, err);
@@ -30,7 +27,6 @@ function showFatalError(context, err) {
 window.addEventListener('error', (e) => showFatalError('script', e.error || e.message));
 window.addEventListener('unhandledrejection', (e) => showFatalError('promesa', e.reason));
 
-// ---------- Elementos del DOM ----------
 const authScreen = document.getElementById('auth-screen');
 const authTabLogin = document.getElementById('tab-login');
 const authTabRegister = document.getElementById('tab-register');
@@ -58,14 +54,9 @@ const deathMessageEl = document.getElementById('death-message');
 const saveIndicatorEl = document.getElementById('save-indicator');
 const gameContainer = document.getElementById('game-container');
 
-// ---------- Estado de sesión / partida guardada ----------
 let isGuest = false;
 let savedGame = null;
 let authMode = 'login';
-
-// ============================================================
-// FASE 1: Conectar TODOS los botones de la interfaz primero
-// ============================================================
 
 authTabLogin.addEventListener('click', () => setAuthMode('login'));
 authTabRegister.addEventListener('click', () => setAuthMode('register'));
@@ -128,17 +119,8 @@ logoutBtn.addEventListener('click', () => {
   authPassword.value = '';
 });
 
-// Estos dos quedan conectados ya mismo. La función startGame() se define
-// más abajo, pero en JavaScript las funciones declaradas con "function"
-// están disponibles en todo el archivo aunque el click llegue antes
-// de leer esa parte del código (hoisting) — así que esto funciona
-// aunque el motor 3D esté definido más abajo.
 creativeBtn.addEventListener('click', () => startGame('creative'));
 survivalBtn.addEventListener('click', () => startGame('survival'));
-
-// ============================================================
-// FASE 2: Flujo de login / partida guardada
-// ============================================================
 
 async function goToStartScreen() {
   authScreen.classList.add('hidden');
@@ -174,12 +156,6 @@ async function goToStartScreen() {
     }
   }
 })();
-
-// ============================================================
-// FASE 3: Motor 3D (Three.js). Todo lo riesgoso va acá adentro,
-// envuelto en try/catch, para que un fallo acá no tumbe los
-// botones de arriba (que ya están conectados).
-// ============================================================
 
 let scene, camera, renderer, sun, world, player, inventory, touchControls;
 let highlightMesh;
@@ -279,7 +255,6 @@ function startGame(mode) {
   }
 }
 
-// ---------- Romper / colocar bloques ----------
 function breakBlock() {
   if (!gameStarted || !player || player.isDead) return;
   const hit = player.raycastBlock(6);
@@ -312,7 +287,6 @@ function wouldCollideWithPlayer(blockPos) {
   return withinX && withinZ && withinY;
 }
 
-// ---------- Vida (supervivencia) ----------
 function renderHealthBar(health, maxHealth) {
   healthBarEl.innerHTML = '';
   const totalHearts = maxHealth / 2;
@@ -334,7 +308,6 @@ function handleDeath() {
   }, 1500);
 }
 
-// ---------- Autoguardado ----------
 let autoSaveInterval = null;
 
 function startAutoSave() {
@@ -365,7 +338,6 @@ async function persistGame() {
   }
 }
 
-// ---------- Bucle principal ----------
 let lastTime = performance.now();
 let frameCount = 0, fpsAccum = 0, fps = 0;
 
@@ -398,6 +370,7 @@ function animate(now) {
       `Pos: ${player.position.x.toFixed(1)}, ${player.position.y.toFixed(1)}, ${player.position.z.toFixed(1)}\n` +
       `Bloque: ${selectedName}\n` +
       `Locked: ${player.isLocked} | OnGround: ${player.onGround}\n` +
+      `Teclas detectadas (total): ${player.keydownCount}\n` +
       `W:${!!k['KeyW']} A:${!!k['KeyA']} S:${!!k['KeyS']} D:${!!k['KeyD']} Space:${!!k['Space']}`;
   }
 
