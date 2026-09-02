@@ -16,21 +16,21 @@ const WALK_SPEED = 5.4;
 const PLAYER_HEIGHT = 1.7;
 const PLAYER_RADIUS = 0.3;
 const EYE_HEIGHT = 1.62;
-const SAFE_FALL_BLOCKS = 3; // hasta esta altura de caída no duele, como en Minecraft
-const MAX_HEALTH = 20;      // 20 = 10 corazones (cada corazón = 2 de vida)
+const SAFE_FALL_BLOCKS = 3;
+const MAX_HEALTH = 20;
 
 export class Player {
   constructor(camera, domElement, world, mode = 'creative') {
     this.camera = camera;
     this.domElement = domElement;
     this.world = world;
-    this.mode = mode; // 'creative' | 'survival'
+    this.mode = mode;
 
     this.position = new THREE.Vector3(0, 40, 0);
     this.velocity = new THREE.Vector3(0, 0, 0);
     this.onGround = false;
     this._wasOnGround = true;
-    this._peakY = null; // altura más alta alcanzada mientras está en el aire (para daño por caída)
+    this._peakY = null;
 
     this.yaw = 0;
     this.pitch = 0;
@@ -39,9 +39,8 @@ export class Player {
     this.maxHealth = MAX_HEALTH;
     this.isDead = false;
 
-    // Callbacks que main.js puede engachar
-    this.onHealthChange = null; // (health, maxHealth) => {}
-    this.onDeath = null;        // () => {}
+    this.onHealthChange = null;
+    this.onDeath = null;
 
     this.keys = {};
     this.isLocked = false;
@@ -51,7 +50,6 @@ export class Player {
     this._setupReliability();
   }
 
-  // ---------- Pointer Lock (mouse-look en PC) ----------
   _setupPointerLock() {
     this.domElement.addEventListener('click', () => {
       if (!this.isLocked) this.domElement.requestPointerLock();
@@ -61,8 +59,6 @@ export class Player {
       this.isLocked = document.pointerLockElement === this.domElement;
     });
 
-    // Si el navegador rechaza el pointer lock (pasa a veces en el primer click),
-    // no rompemos nada: el usuario puede volver a clickear.
     document.addEventListener('pointerlockerror', () => {
       this.isLocked = false;
     });
@@ -73,7 +69,6 @@ export class Player {
     });
   }
 
-  // Rotar la cámara. Lo usan tanto el mouse (PC) como el touch (celular/tablet).
   look(dx, dy, sensitivity = 0.0035) {
     this.yaw -= dx * sensitivity;
     this.pitch -= dy * sensitivity;
@@ -82,26 +77,22 @@ export class Player {
   }
 
   _setupKeyboard() {
-    window.addEventListener('keydown', (e) => { this.keys[e.code] = true; });
+    this.keydownCount = 0; // contador de diagnóstico: cuántos keydown detectó el juego en total
+    window.addEventListener('keydown', (e) => {
+      this.keys[e.code] = true;
+      this.keydownCount++;
+      // Evita que el navegador haga scroll o cualquier acción por defecto con estas teclas
+      if (['KeyW','KeyA','KeyS','KeyD','Space'].includes(e.code)) e.preventDefault();
+    });
     window.addEventListener('keyup', (e) => { this.keys[e.code] = false; });
   }
 
-  // ---------------------------------------------------------
-  // Fix de confiabilidad: si la pestaña queda oculta (cambiás de
-  // pestaña o de app) reseteamos las teclas para que el jugador no
-  // siga "caminando solo". OJO: usamos SOLO "visibilitychange" y
-  // no el evento "blur" — blur también se dispara en momentos
-  // normales del juego (ej: al activarse el mouse capturado, o al
-  // sacar una captura de pantalla), y borrar las teclas ahí
-  // causaba que W/A/S/D se sintieran "intermitentes".
-  // ---------------------------------------------------------
   _setupReliability() {
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) this.keys = {};
     });
   }
 
-  // ---------- Colisión simple contra el mundo ----------
   _collides(x, y, z) {
     const minX = Math.floor(x - PLAYER_RADIUS);
     const maxX = Math.floor(x + PLAYER_RADIUS);
@@ -121,7 +112,7 @@ export class Player {
   }
 
   update(dt) {
-    if (this.isDead) return; // congelado mientras se muestra la pantalla de muerte
+    if (this.isDead) return;
     dt = Math.min(dt, 0.05);
 
     const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
@@ -164,7 +155,6 @@ export class Player {
 
     this.position.copy(next);
 
-    // --- Seguimiento de caída libre para calcular daño al aterrizar ---
     if (!this.onGround) {
       if (this._peakY === null || this.position.y > this._peakY) this._peakY = this.position.y;
     }
@@ -177,7 +167,6 @@ export class Player {
     }
     this._wasOnGround = this.onGround;
 
-    // --- Aplicar a la cámara ---
     this.camera.position.set(this.position.x, this.position.y + EYE_HEIGHT, this.position.z);
     this.camera.rotation.order = 'YXZ';
     this.camera.rotation.y = this.yaw;
@@ -185,7 +174,7 @@ export class Player {
   }
 
   _applyFallDamage(fallDistance) {
-    if (this.mode !== 'survival') return; // en creativo no hay daño
+    if (this.mode !== 'survival') return;
     if (fallDistance > SAFE_FALL_BLOCKS) {
       const damage = Math.floor((fallDistance - SAFE_FALL_BLOCKS) * 2);
       this.takeDamage(damage);
@@ -214,7 +203,6 @@ export class Player {
     }
   }
 
-  // Restaura una posición/salud guardadas (usado al continuar una partida)
   restoreState({ x, y, z, yaw, pitch, health } = {}) {
     if (x !== undefined) this.position.set(x, y, z);
     if (yaw !== undefined) this.yaw = yaw;
@@ -225,9 +213,6 @@ export class Player {
     }
   }
 
-  // ---------------------------------------------------------
-  // Raycasting voxel (algoritmo DDA de Amanatides & Woo).
-  // ---------------------------------------------------------
   raycastBlock(maxDistance = 6) {
     const origin = this.camera.position.clone();
     const dir = new THREE.Vector3();
@@ -276,4 +261,4 @@ export class Player {
 
     return null;
   }
-}
+  }
