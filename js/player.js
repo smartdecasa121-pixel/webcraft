@@ -87,14 +87,15 @@ export class Player {
   }
 
   // ---------------------------------------------------------
-  // Fixes de confiabilidad: si la pestaña/ventana pierde el foco
-  // (alt-tab, cambiar de app, abrir devtools) las teclas pueden
-  // quedar "trabadas" en `true` porque nunca llega el keyup.
-  // Reseteamos todo al perder el foco para que el player no siga
-  // caminando solo.
+  // Fix de confiabilidad: si la pestaña queda oculta (cambiás de
+  // pestaña o de app) reseteamos las teclas para que el jugador no
+  // siga "caminando solo". OJO: usamos SOLO "visibilitychange" y
+  // no el evento "blur" — blur también se dispara en momentos
+  // normales del juego (ej: al activarse el mouse capturado, o al
+  // sacar una captura de pantalla), y borrar las teclas ahí
+  // causaba que W/A/S/D se sintieran "intermitentes".
   // ---------------------------------------------------------
   _setupReliability() {
-    window.addEventListener('blur', () => { this.keys = {}; });
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) this.keys = {};
     });
