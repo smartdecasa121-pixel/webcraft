@@ -146,9 +146,19 @@ export class Player {
 
     next.y += this.velocity.y * dt;
     if (this._collides(next.x, next.y, next.z)) {
-      if (this.velocity.y < 0) this.onGround = true;
+      if (this.velocity.y < 0) {
+        // Estábamos cayendo: en vez de simplemente "revertir" a la posición
+        // del frame anterior (lo que podía dejar al jugador en una altura
+        // fraccionaria, tocando por error un bloque de arriba y quedando
+        // trabado para siempre), paramos limpio justo en la superficie
+        // del bloque de abajo.
+        next.y = Math.floor(next.y) + 1;
+        this.onGround = true;
+      } else if (this.velocity.y > 0) {
+        // Estábamos saltando y topamos con el techo: paramos justo debajo.
+        next.y = Math.floor(next.y + PLAYER_HEIGHT) - PLAYER_HEIGHT;
+      }
       this.velocity.y = 0;
-      next.y = this.position.y;
     } else {
       this.onGround = false;
     }
@@ -261,4 +271,4 @@ export class Player {
 
     return null;
   }
-  }
+}
